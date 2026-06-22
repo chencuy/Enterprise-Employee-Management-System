@@ -896,6 +896,28 @@ tr:last-child td {
   width: min(760px, 100%);
 }
 
+.attendance-settings-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.attendance-settings-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 2px;
+}
+
+.attendance-settings-section + .attendance-settings-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.attendance-time-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
 .modal-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1606,6 +1628,10 @@ tr:last-child td {
   }
 
   .modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-time-grid {
     grid-template-columns: 1fr;
   }
 

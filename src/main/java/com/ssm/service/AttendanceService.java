@@ -2,13 +2,18 @@ package com.ssm.service;
 
 import com.ssm.dto.AttendanceAnomalyQuery;
 import com.ssm.dto.AttendanceBulkCheckRequest;
+import com.ssm.dto.AttendanceForceAbsentRequest;
 import com.ssm.dto.AttendanceQuery;
+import com.ssm.dto.AttendanceSettingsRequest;
+import com.ssm.dto.AttendanceSettingsResponse;
 import com.ssm.dto.PageResult;
 import com.ssm.dto.SessionUser;
 import com.ssm.entity.AttendanceAnomaly;
 import com.ssm.entity.AttendanceRecord;
+import com.ssm.entity.AttendanceSettings;
 import com.ssm.entity.Employee;
 import com.ssm.mapper.AttendanceMapper;
+import com.ssm.mapper.AttendanceSettingsMapper;
 import com.ssm.mapper.EmployeeMapper;
 import com.ssm.util.CsvExportUtils;
 import org.apache.ibatis.session.SqlSession;
@@ -41,21 +46,24 @@ import java.util.stream.Collectors;
 @Service
 public class AttendanceService {
     private static final int MAX_ANOMALY_DAYS = 31;
+    private static final int MAX_REMARK_LENGTH = 400;
     private static final Set<String> ANOMALY_TYPES = Set.of("LATE", "ABSENT", "UNSIGNED");
 
     private final AttendanceMapper attendanceMapper;
+    private final AttendanceSettingsMapper attendanceSettingsMapper;
     private final EmployeeMapper employeeMapper;
     private final AuditLogService auditLogService;
     private final SqlSession sqlSession;
-    private final LocalTime lateAfter;
-    private final LocalTime checkInStart;
-    private final LocalTime checkInEnd;
+    private final LocalTime defaultLateAfter;
+    private final LocalTime defaultCheckInStart;
+    private final LocalTime defaultCheckInEnd;
     private final Set<DayOfWeek> workDays;
     private final Set<LocalDate> holidays;
     private final Set<LocalDate> extraWorkdays;
 
     public AttendanceService(
             AttendanceMapper attendanceMapper,
+            AttendanceSettingsMapper attendanceSettingsMapper,
             EmployeeMapper employeeMapper,
             AuditLogService auditLogService,
             SqlSession sqlSession,
@@ -67,16 +75,17 @@ public class AttendanceService {
             @Value("${app.attendance.extra-workdays:}") String extraWorkdays
     ) {
         this.attendanceMapper = attendanceMapper;
+        this.attendanceSettingsMapper = attendanceSettingsMapper;
         this.employeeMapper = employeeMapper;
         this.auditLogService = auditLogService;
         this.sqlSession = sqlSession;
-        this.lateAfter = parseConfigTime("app.attendance.late-after", lateAfter);
-        this.checkInStart = parseConfigTime("app.attendance.check-in-start", checkInStart);
-        this.checkInEnd = parseConfigTime("app.attendance.check-in-end", checkInEnd);
-        if (!this.checkInStart.isBefore(this.checkInEnd)) {
+        this.defaultLateAfter = parseConfigTime("app.attendance.late-after", lateAfter);
+        this.defaultCheckInStart = parseConfigTime("app.attendance.check-in-start", checkInStart);
+        this.defaultCheckInEnd = parseConfigTime("app.attendance.check-in-end", checkInEnd);
+        if (!this.defaultCheckInStart.isBefore(this.defaultCheckInEnd)) {
             throw new IllegalStateException("app.attendance.check-in-start 必须早于 app.attendance.check-in-end");
         }
-        if (this.lateAfter.isBefore(this.checkInStart) || this.lateAfter.isAfter(this.checkInEnd)) {
+        if (this.defaultLateAfter.isBefore(this.defaultCheckInStart) || this.defaultLateAfter.isAfter(this.defaultCheckInEnd)) {
             throw new IllegalStateException("app.attendance.late-after 必须位于签到时间范围内");
         }
         this.workDays = parseWorkDays(workDays);
@@ -98,6 +107,9 @@ public class AttendanceService {
     }
 
     public int unreadCount(SessionUser user) {
+        if ("ADMIN".equals(user.role)) {
+            return 0;
+        }
         LocalDate today = LocalDate.now();
         if (!isWorkday(today)) {
             return 0;
@@ -106,27 +118,38 @@ public class AttendanceService {
     }
 
     public LocalTime checkInStart() {
-        return checkInStart;
+        return currentSettings().checkInStart();
     }
 
     public LocalTime checkInEnd() {
-        return checkInEnd;
+        return currentSettings().checkInEnd();
+    }
+
+    public AttendanceSettingsResponse settings() {
+        return toSettingsResponse(currentSettings());
     }
 
     @Transactional
     public AttendanceRecord checkIn(SessionUser user) {
+        if ("ADMIN".equals(user.role)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "管理员无需签到");
+        }
         LocalDate today = LocalDate.now();
         if (!isWorkday(today)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "非工作日无需签到");
         }
+        EffectiveAttendanceSettings settings = currentSettings();
         AttendanceRecord existing = attendanceMapper.findByEmployeeAndDate(user.id, today);
         if (existing != null && existing.checkInAt != null) {
             return existing;
         }
+        if (existing != null && "FORCE_ABSENT".equals(existing.source)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该日已被管理员强制缺勤");
+        }
         LocalTime now = LocalTime.now().withSecond(0).withNano(0);
-        if (now.isBefore(checkInStart) || now.isAfter(checkInEnd)) {
+        if (now.isBefore(settings.checkInStart()) || now.isAfter(settings.checkInEnd())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "签到时间为 " + checkInStart + " - " + checkInEnd + "，当前不在签到时间范围内");
+                    "签到时间为 " + settings.checkInStart() + " - " + settings.checkInEnd() + "，当前不在签到时间范围内");
         }
         AttendanceRecord record = new AttendanceRecord();
         record.employeeId = user.id;
@@ -142,6 +165,7 @@ public class AttendanceService {
 
     public PageResult<AttendanceAnomaly> anomalies(AttendanceAnomalyQuery query, SessionUser user) {
         AttendanceAnomalyQuery safeQuery = scopedAnomalyQuery(query, user);
+        EffectiveAttendanceSettings settings = currentSettings();
         List<Employee> employees = employeeMapper.findAttendanceCandidates(safeQuery.departmentId, safeQuery.employeeId);
         if (employees.isEmpty()) {
             return new PageResult<>(0, safeQuery.page, safeQuery.normalizedSize(), List.of());
@@ -156,7 +180,7 @@ public class AttendanceService {
         for (LocalDate date = safeQuery.endDate; !date.isBefore(safeQuery.startDate); date = date.minusDays(1)) {
             for (Employee employee : employees) {
                 AttendanceRecord record = records.get(attendanceKey(employee.id, date));
-                AttendanceAnomaly anomaly = buildAnomaly(employee, date, record);
+                AttendanceAnomaly anomaly = buildAnomaly(employee, date, record, settings);
                 if (anomaly != null && (safeQuery.type == null || safeQuery.type.equals(anomaly.type))) {
                     anomalies.add(anomaly);
                 }
@@ -194,7 +218,7 @@ public class AttendanceService {
                 if (employee == null) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "所选员工不存在");
                 }
-                if ("WORKING".equals(employee.status)) {
+                if ("WORKING".equals(employee.status) && !"ADMIN".equals(employee.role)) {
                     employeeIds.add(employee.id);
                 }
             }
@@ -202,16 +226,17 @@ public class AttendanceService {
         if (employeeIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择至少一个在职员工或部门");
         }
+        EffectiveAttendanceSettings settings = currentSettings();
         String remark = "管理员一键全勤：" + user.name;
         if (request != null && !AuthService.isBlank(request.remark)) {
             String trimmed = request.remark.trim();
-            remark += "；" + (trimmed.length() > 400 ? trimmed.substring(0, 400) : trimmed);
+            remark += "；" + limitRemark(trimmed);
         }
         for (Long employeeId : employeeIds) {
             AttendanceRecord record = new AttendanceRecord();
             record.employeeId = employeeId;
             record.attendanceDate = attendanceDate;
-            record.checkInAt = attendanceDate.atTime(lateAfter);
+            record.checkInAt = attendanceDate.atTime(settings.lateAfter());
             record.source = "ADMIN_FILL";
             record.remark = remark;
             attendanceMapper.upsertAdminFill(record);
@@ -255,6 +280,79 @@ public class AttendanceService {
                     .append('\n');
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Transactional
+    public AttendanceSettingsResponse updateSettings(AttendanceSettingsRequest request, SessionUser user) {
+        requireAdmin(user);
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写考勤设置");
+        }
+        LocalTime checkInStart = parseRequestTime("有效签到开始时间", request.checkInStart);
+        LocalTime checkInEnd = parseRequestTime("有效签到结束时间", request.checkInEnd);
+        LocalTime lateAfter = parseRequestTime("迟到判定时间", request.lateAfter);
+        validateSettings(checkInStart, checkInEnd, lateAfter);
+
+        AttendanceSettings settings = new AttendanceSettings();
+        settings.id = 1L;
+        settings.checkInStart = checkInStart;
+        settings.checkInEnd = checkInEnd;
+        settings.lateAfter = lateAfter;
+        attendanceSettingsMapper.upsert(settings);
+        auditLogService.record(
+                user,
+                "考勤管理",
+                "设置签到时间",
+                "attendance_settings",
+                1L,
+                "考勤规则",
+                "有效签到时间：" + checkInStart + " - " + checkInEnd + "，迟到阈值：" + lateAfter
+        );
+        return settings();
+    }
+
+    @Transactional
+    public AttendanceRecord forceAbsent(AttendanceForceAbsentRequest request, SessionUser user) {
+        requireAdmin(user);
+        if (request == null || request.employeeId == null || request.attendanceDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择员工和考勤日期");
+        }
+        if (request.attendanceDate.isAfter(LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能处理未来日期的考勤");
+        }
+        Employee employee = employeeMapper.findById(request.employeeId);
+        if (employee == null || !"WORKING".equals(employee.status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "员工不存在或非在职状态");
+        }
+        if ("ADMIN".equals(employee.role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "管理员无需签到，不能强制缺勤");
+        }
+        AttendanceRecord existing = attendanceMapper.findByEmployeeAndDate(request.employeeId, request.attendanceDate);
+        if (existing == null || existing.checkInAt == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "只能对已签到员工强制缺勤");
+        }
+
+        String remark = "管理员强制缺勤：" + user.name;
+        if (!AuthService.isBlank(request.remark)) {
+            remark += "；" + limitRemark(request.remark);
+        }
+        AttendanceRecord record = new AttendanceRecord();
+        record.employeeId = request.employeeId;
+        record.attendanceDate = request.attendanceDate;
+        record.source = "FORCE_ABSENT";
+        record.remark = remark;
+        attendanceMapper.upsertForceAbsent(record);
+        AttendanceRecord saved = attendanceMapper.findByEmployeeAndDate(request.employeeId, request.attendanceDate);
+        auditLogService.record(
+                user,
+                "考勤管理",
+                "强制缺勤",
+                "attendance",
+                saved == null ? null : saved.id,
+                employee.name,
+                "考勤日期：" + request.attendanceDate + "，员工：" + employee.name
+        );
+        return saved;
     }
 
     public StreamingResponseBody exportCsvStream(AttendanceQuery query, SessionUser user) {
@@ -405,13 +503,21 @@ public class AttendanceService {
         return safeQuery;
     }
 
-    private AttendanceAnomaly buildAnomaly(Employee employee, LocalDate date, AttendanceRecord record) {
+    private AttendanceAnomaly buildAnomaly(
+            Employee employee,
+            LocalDate date,
+            AttendanceRecord record,
+            EffectiveAttendanceSettings settings
+    ) {
         if (!isWorkday(date)) {
             return null;
         }
         if (record == null || record.checkInAt == null) {
-            AttendanceAnomaly anomaly = baseAnomaly(employee, date, record);
-            if (date.equals(LocalDate.now())) {
+            AttendanceAnomaly anomaly = baseAnomaly(employee, date, record, settings);
+            if (record != null && "FORCE_ABSENT".equals(record.source)) {
+                anomaly.type = "ABSENT";
+                anomaly.detail = "管理员已强制缺勤";
+            } else if (date.equals(LocalDate.now())) {
                 anomaly.type = "UNSIGNED";
                 anomaly.detail = "今日尚未签到";
             } else {
@@ -420,16 +526,21 @@ public class AttendanceService {
             }
             return anomaly;
         }
-        if (record.checkInAt.toLocalTime().isAfter(lateAfter)) {
-            AttendanceAnomaly anomaly = baseAnomaly(employee, date, record);
+        if (record.checkInAt.toLocalTime().isAfter(settings.lateAfter())) {
+            AttendanceAnomaly anomaly = baseAnomaly(employee, date, record, settings);
             anomaly.type = "LATE";
-            anomaly.detail = "签到时间晚于 " + lateAfter;
+            anomaly.detail = "签到时间晚于 " + settings.lateAfter();
             return anomaly;
         }
         return null;
     }
 
-    private AttendanceAnomaly baseAnomaly(Employee employee, LocalDate date, AttendanceRecord record) {
+    private AttendanceAnomaly baseAnomaly(
+            Employee employee,
+            LocalDate date,
+            AttendanceRecord record,
+            EffectiveAttendanceSettings settings
+    ) {
         AttendanceAnomaly anomaly = new AttendanceAnomaly();
         anomaly.employeeId = employee.id;
         anomaly.employeeName = employee.name;
@@ -438,7 +549,7 @@ public class AttendanceService {
         anomaly.departmentName = employee.departmentName;
         anomaly.attendanceDate = date;
         anomaly.checkInAt = record == null ? null : record.checkInAt;
-        anomaly.lateAfter = lateAfter;
+        anomaly.lateAfter = settings.lateAfter();
         return anomaly;
     }
 
@@ -452,6 +563,65 @@ public class AttendanceService {
         } catch (Exception exception) {
             throw new IllegalStateException(propertyName + " 配置必须是 HH:mm 格式", exception);
         }
+    }
+
+    private LocalTime parseRequestTime(String fieldName, String value) {
+        if (AuthService.isBlank(value)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + "不能为空");
+        }
+        try {
+            return LocalTime.parse(value.trim());
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + "必须是 HH:mm 格式");
+        }
+    }
+
+    private void validateSettings(LocalTime checkInStart, LocalTime checkInEnd, LocalTime lateAfter) {
+        if (!checkInStart.isBefore(checkInEnd)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "有效签到开始时间必须早于结束时间");
+        }
+        if (lateAfter.isBefore(checkInStart) || lateAfter.isAfter(checkInEnd)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "迟到判定时间必须位于有效签到时间范围内");
+        }
+    }
+
+    private EffectiveAttendanceSettings currentSettings() {
+        AttendanceSettings saved = attendanceSettingsMapper.find();
+        if (saved == null || saved.checkInStart == null || saved.checkInEnd == null || saved.lateAfter == null) {
+            return defaultSettings();
+        }
+        if (!saved.checkInStart.isBefore(saved.checkInEnd)
+                || saved.lateAfter.isBefore(saved.checkInStart)
+                || saved.lateAfter.isAfter(saved.checkInEnd)) {
+            return defaultSettings();
+        }
+        return new EffectiveAttendanceSettings(saved.checkInStart, saved.checkInEnd, saved.lateAfter);
+    }
+
+    private EffectiveAttendanceSettings defaultSettings() {
+        return new EffectiveAttendanceSettings(defaultCheckInStart, defaultCheckInEnd, defaultLateAfter);
+    }
+
+    private AttendanceSettingsResponse toSettingsResponse(EffectiveAttendanceSettings settings) {
+        return new AttendanceSettingsResponse(
+                settings.checkInStart().toString(),
+                settings.checkInEnd().toString(),
+                settings.lateAfter().toString()
+        );
+    }
+
+    private void requireAdmin(SessionUser user) {
+        if (!"ADMIN".equals(user.role)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有管理员可以执行该操作");
+        }
+    }
+
+    private String limitRemark(String value) {
+        if (AuthService.isBlank(value)) {
+            return "";
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > MAX_REMARK_LENGTH ? trimmed.substring(0, MAX_REMARK_LENGTH) : trimmed;
     }
 
     private Set<DayOfWeek> parseWorkDays(String value) {
@@ -533,6 +703,9 @@ public class AttendanceService {
         if ("ADMIN_FILL".equals(source)) {
             return "管理员全勤";
         }
+        if ("FORCE_ABSENT".equals(source)) {
+            return "强制缺勤";
+        }
         return display(source, "-");
     }
 
@@ -547,5 +720,8 @@ public class AttendanceService {
             return "普通员工";
         }
         return display(role, "-");
+    }
+
+    private record EffectiveAttendanceSettings(LocalTime checkInStart, LocalTime checkInEnd, LocalTime lateAfter) {
     }
 }

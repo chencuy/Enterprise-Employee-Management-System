@@ -145,6 +145,22 @@
     };
   }
 
+  function defaultAttendanceSettingsForm() {
+    return {
+      checkInStart: '',
+      checkInEnd: '',
+      lateAfter: ''
+    };
+  }
+
+  function defaultAttendanceForceAbsentForm() {
+    return {
+      employeeId: '',
+      attendanceDate: new Date().toISOString().slice(0, 10),
+      remark: ''
+    };
+  }
+
   function toParams(source) {
     const params = new URLSearchParams();
     Object.entries(source).forEach(([key, value]) => {
@@ -959,7 +975,7 @@
           </section>
 
           <section v-if="view === 'notifications'" class="work-section">
-            <div v-if="attendanceUnreadCount > 0" class="notification-alert">
+            <div v-if="!isAdmin && attendanceUnreadCount > 0" class="notification-alert">
               <div>
                 <strong>考勤异常</strong>
                 <span>今日尚未签到，请及时处理。</span>
@@ -1239,11 +1255,12 @@
               </div>
               <div class="pagination inline-actions">
                 <div class="pagination-actions">
-                  <button class="primary-button" :disabled="attendanceUnreadCount === 0" @click="checkInAttendance"><i data-lucide="check-circle"></i><span>{{ attendanceUnreadCount === 0 ? '今日已签到' : '今日签到' }}</span></button>
-                  <span v-if="checkInWindow && attendanceUnreadCount > 0" class="check-in-window-hint">签到时间 {{ checkInWindow.start }} - {{ checkInWindow.end }}</span>
+                  <button v-if="!isAdmin" class="primary-button" :disabled="attendanceUnreadCount === 0" @click="checkInAttendance"><i data-lucide="check-circle"></i><span>{{ attendanceUnreadCount === 0 ? '今日已签到' : '今日签到' }}</span></button>
+                  <span v-if="!isAdmin && checkInWindow && attendanceUnreadCount > 0" class="check-in-window-hint">签到时间 {{ checkInWindow.start }} - {{ checkInWindow.end }}</span>
                   <button v-if="isAdmin" class="ghost-button" @click="openBulkAttendanceModal"><i data-lucide="badge-check"></i><span>一键全勤</span></button>
                   <button class="ghost-button" @click="openAttendanceFilterModal"><i data-lucide="search"></i><span>查询</span></button>
                   <button class="ghost-button" @click="openAttendanceExportModal"><i data-lucide="download"></i><span>导出考勤</span></button>
+                  <button v-if="isAdmin" class="ghost-button" @click="openAttendanceSettingsModal"><i data-lucide="settings"></i><span>设置</span></button>
                 </div>
                 <div class="pagination-controls">
                   <button class="ghost-button" :disabled="attendanceFilter.page <= 1" @click="attendancePageTo(attendanceFilter.page - 1)">上一页</button>
@@ -1285,6 +1302,43 @@
               </form>
             </div>
 
+            <div v-if="attendanceSettingsModalOpen" class="modal-backdrop" @click.self="closeAttendanceSettingsModal">
+              <div class="form-panel modal-panel wide-modal attendance-settings-modal">
+                <div class="section-title">
+                  <h2>考勤设置</h2>
+                  <button type="button" class="icon-button" title="关闭" @click="closeAttendanceSettingsModal"><i data-lucide="x"></i></button>
+                </div>
+                <form class="attendance-settings-section" @submit.prevent="saveAttendanceSettings">
+                  <div class="file-target-title">
+                    <strong>有效签到时间</strong>
+                    <span>当前规则会影响签到、全勤和迟到判定</span>
+                  </div>
+                  <div class="attendance-time-grid">
+                    <label><span>开始时间</span><input v-model="attendanceSettingsForm.checkInStart" type="time" required></label>
+                    <label><span>结束时间</span><input v-model="attendanceSettingsForm.checkInEnd" type="time" required></label>
+                    <label><span>迟到时间</span><input v-model="attendanceSettingsForm.lateAfter" type="time" required></label>
+                  </div>
+                  <div class="form-actions">
+                    <button class="primary-button" type="submit" :disabled="attendanceSettingsSubmitting"><i data-lucide="save"></i><span>{{ attendanceSettingsSubmitting ? '保存中' : '保存设置' }}</span></button>
+                  </div>
+                </form>
+                <form class="attendance-settings-section" @submit.prevent="forceAbsentAttendance">
+                  <div class="file-target-title">
+                    <strong>强制缺勤</strong>
+                    <span>仅可处理已经签到的在职员工</span>
+                  </div>
+                  <div class="attendance-time-grid">
+                    <label><span>员工</span><select v-model="attendanceForceAbsentForm.employeeId" required><option value="">请选择</option><option v-for="employee in attendanceActionEmployeeOptions" :key="'absent-' + employee.id" :value="employee.id">{{ employee.name }}（{{ employee.departmentName || '总部管理' }}）</option></select></label>
+                    <label><span>日期</span><input v-model="attendanceForceAbsentForm.attendanceDate" type="date" required></label>
+                    <label><span>备注</span><input v-model.trim="attendanceForceAbsentForm.remark" maxlength="400" placeholder="例如：外出未按规定补卡"></label>
+                  </div>
+                  <div class="form-actions">
+                    <button class="ghost-button danger-text" type="submit" :disabled="attendanceForceAbsentSubmitting"><i data-lucide="user-x"></i><span>{{ attendanceForceAbsentSubmitting ? '处理中' : '强制缺勤' }}</span></button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
             <div v-if="bulkAttendanceModalOpen" class="modal-backdrop" @click.self="closeBulkAttendanceModal">
               <form class="form-panel modal-panel wide-modal" @submit.prevent="bulkFullAttendance">
                 <div class="section-title">
@@ -1311,7 +1365,7 @@
                       <span>可多选</span>
                     </div>
                     <div class="file-target-group">
-                      <label v-for="employee in employeeOptions" :key="'bulk-e' + employee.id" class="file-target-item">
+                      <label v-for="employee in attendanceActionEmployeeOptions" :key="'bulk-e' + employee.id" class="file-target-item">
                         <input type="checkbox" :value="employee.id" v-model="bulkAttendanceForm.employeeIds">
                         <span>{{ employee.name }}（{{ employee.departmentName || '总部管理' }}）</span>
                       </label>
@@ -1761,6 +1815,11 @@
         checkInWindow: null,
         attendanceFilterModalOpen: false,
         attendanceExportModalOpen: false,
+        attendanceSettingsModalOpen: false,
+        attendanceSettingsForm: defaultAttendanceSettingsForm(),
+        attendanceSettingsSubmitting: false,
+        attendanceForceAbsentForm: defaultAttendanceForceAbsentForm(),
+        attendanceForceAbsentSubmitting: false,
         attendanceAnomalies: [],
         attendanceAnomalyPage: { total: 0, page: 1, size: LIST_PAGE_SIZE, records: [] },
         attendanceAnomalyFilter: { employeeId: '', departmentId: '', type: '', startDate: new Date().toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), page: 1, size: LIST_PAGE_SIZE },
@@ -1834,7 +1893,7 @@
           { view: 'notifications', label: '通知中心', icon: 'bell' },
           { view: 'messages', label: '消息', icon: 'mail' },
           { view: 'files', label: '文件', icon: 'folder' },
-          { view: 'attendance', label: '我的考勤', icon: 'calendar-check' }
+          { view: 'attendance', label: this.isAdmin ? '考勤管理' : '我的考勤', icon: 'calendar-check' }
         ];
       },
       quickActions() {
@@ -1843,7 +1902,7 @@
           { view: 'notifications', label: '通知中心', icon: 'bell' },
           { view: 'messages', label: '消息', icon: 'mail' },
           { view: 'files', label: '文件', icon: 'folder' },
-          { view: 'attendance', label: '我的考勤', icon: 'calendar-check' }
+          { view: 'attendance', label: this.isAdmin ? '考勤管理' : '我的考勤', icon: 'calendar-check' }
         ];
         if (this.isSupervisor || this.isAdmin) {
           items.push({ view: 'employees', label: '员工管理', icon: 'users-round' });
@@ -1885,6 +1944,9 @@
           return this.employeeOptions;
         }
         return [];
+      },
+      attendanceActionEmployeeOptions() {
+        return this.employeeOptions.filter(employee => employee.role !== 'ADMIN' && employee.status === 'WORKING');
       },
       selectedSalaryEmployee() {
         const id = Number(this.salaryForm.employeeId);
@@ -2568,6 +2630,15 @@
           this.checkInWindow = null;
         }
       },
+      async loadAttendanceSettings() {
+        const settings = await this.api('/api/attendance/settings');
+        this.attendanceSettingsForm = {
+          checkInStart: settings.checkInStart || settings.start || '',
+          checkInEnd: settings.checkInEnd || settings.end || '',
+          lateAfter: settings.lateAfter || ''
+        };
+        this.checkInWindow = settings;
+      },
       async loadAttendanceAnomalies() {
         const params = toParams(this.attendanceAnomalyFilter);
         this.attendanceAnomalyPage = await this.api('/api/attendance/anomalies?' + params);
@@ -2760,6 +2831,86 @@
           this.closeAttendanceExportModal();
         } catch (error) {
           this.showFeedback('error', error.message || '导出失败');
+        }
+      },
+      async openAttendanceSettingsModal() {
+        if (!this.isAdmin) {
+          return;
+        }
+        this.attendanceForceAbsentForm = defaultAttendanceForceAbsentForm();
+        try {
+          await this.loadAttendanceSettings();
+          this.attendanceSettingsModalOpen = true;
+          this.refreshIcons();
+        } catch (error) {
+          this.showFeedback('error', error.message || '考勤设置加载失败');
+        }
+      },
+      closeAttendanceSettingsModal() {
+        this.attendanceSettingsModalOpen = false;
+        this.attendanceSettingsSubmitting = false;
+        this.attendanceForceAbsentSubmitting = false;
+        this.attendanceForceAbsentForm = defaultAttendanceForceAbsentForm();
+      },
+      async saveAttendanceSettings() {
+        if (this.attendanceSettingsSubmitting) {
+          return;
+        }
+        this.attendanceSettingsSubmitting = true;
+        try {
+          const adminPassword = await this.requestAdminPassword('设置考勤时间');
+          if (adminPassword === null) return;
+          const settings = await this.api('/api/attendance/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ ...this.attendanceSettingsForm, adminPassword })
+          });
+          this.attendanceSettingsForm = {
+            checkInStart: settings.checkInStart || settings.start || '',
+            checkInEnd: settings.checkInEnd || settings.end || '',
+            lateAfter: settings.lateAfter || ''
+          };
+          this.checkInWindow = settings;
+          this.showFeedback('success', '考勤时间已更新');
+          await Promise.all([this.loadAttendanceUnread(), this.loadAttendanceAnomalies(), this.loadDashboardStats()]);
+        } catch (error) {
+          this.showFeedback('error', error.message || '保存失败');
+        } finally {
+          this.attendanceSettingsSubmitting = false;
+        }
+      },
+      async forceAbsentAttendance() {
+        if (this.attendanceForceAbsentSubmitting) {
+          return;
+        }
+        if (!this.attendanceForceAbsentForm.employeeId || !this.attendanceForceAbsentForm.attendanceDate) {
+          this.showFeedback('error', '请选择员工和日期');
+          return;
+        }
+        this.attendanceForceAbsentSubmitting = true;
+        try {
+          const adminPassword = await this.requestAdminPassword('强制缺勤');
+          if (adminPassword === null) return;
+          await this.api('/api/attendance/force-absent', {
+            method: 'POST',
+            body: JSON.stringify({
+              employeeId: Number(this.attendanceForceAbsentForm.employeeId),
+              attendanceDate: this.attendanceForceAbsentForm.attendanceDate,
+              remark: this.attendanceForceAbsentForm.remark,
+              adminPassword
+            })
+          });
+          this.showFeedback('success', '已强制标记为缺勤');
+          this.attendanceForceAbsentForm = defaultAttendanceForceAbsentForm();
+          await Promise.all([
+            this.loadAttendance(),
+            this.loadAttendanceUnread(),
+            this.loadAttendanceAnomalies(),
+            this.loadDashboardStats()
+          ]);
+        } catch (error) {
+          this.showFeedback('error', error.message || '处理失败');
+        } finally {
+          this.attendanceForceAbsentSubmitting = false;
         }
       },
       openEmployeeExportModal() {

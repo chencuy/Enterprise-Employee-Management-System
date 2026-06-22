@@ -3,7 +3,10 @@ package com.ssm.controller;
 import com.ssm.dto.ApiResponse;
 import com.ssm.dto.AttendanceAnomalyQuery;
 import com.ssm.dto.AttendanceBulkCheckRequest;
+import com.ssm.dto.AttendanceForceAbsentRequest;
 import com.ssm.dto.AttendanceQuery;
+import com.ssm.dto.AttendanceSettingsRequest;
+import com.ssm.dto.AttendanceSettingsResponse;
 import com.ssm.dto.CheckInRequest;
 import com.ssm.dto.PageResult;
 import com.ssm.dto.SessionUser;
@@ -24,6 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -33,8 +37,6 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -88,11 +90,36 @@ public class AttendanceController {
     }
 
     @GetMapping("/check-in-window")
-    public ApiResponse<Map<String, String>> checkInWindow() {
-        Map<String, String> data = new LinkedHashMap<>();
-        data.put("start", attendanceService.checkInStart().toString());
-        data.put("end", attendanceService.checkInEnd().toString());
-        return ApiResponse.ok(data);
+    public ApiResponse<AttendanceSettingsResponse> checkInWindow() {
+        return ApiResponse.ok(attendanceService.settings());
+    }
+
+    @GetMapping("/settings")
+    public ApiResponse<AttendanceSettingsResponse> settings(HttpSession session) {
+        authService.requireRole(authService.currentUser(session), "ADMIN");
+        return ApiResponse.ok(attendanceService.settings());
+    }
+
+    @PutMapping("/settings")
+    public ApiResponse<AttendanceSettingsResponse> updateSettings(
+            @RequestBody AttendanceSettingsRequest request,
+            HttpSession session
+    ) {
+        SessionUser user = authService.currentUser(session);
+        authService.requireRole(user, "ADMIN");
+        authService.requireCurrentPassword(user, request == null ? null : request.adminPassword);
+        return ApiResponse.ok(attendanceService.updateSettings(request, user));
+    }
+
+    @PostMapping("/force-absent")
+    public ApiResponse<AttendanceRecord> forceAbsent(
+            @RequestBody AttendanceForceAbsentRequest request,
+            HttpSession session
+    ) {
+        SessionUser user = authService.currentUser(session);
+        authService.requireRole(user, "ADMIN");
+        authService.requireCurrentPassword(user, request == null ? null : request.adminPassword);
+        return ApiResponse.ok(attendanceService.forceAbsent(request, user));
     }
 
     @PostMapping("/check-in")

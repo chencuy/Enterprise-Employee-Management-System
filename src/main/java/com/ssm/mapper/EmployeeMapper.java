@@ -137,6 +137,7 @@ public interface EmployeeMapper {
             "left join departments d on e.department_id = d.id",
             "left join employees m on d.manager_id = m.id",
             "where e.status = 'WORKING'",
+            "and e.role != 'ADMIN'",
             "<if test='departmentId != null'>and e.department_id = #{departmentId}</if>",
             "<if test='employeeId != null'>and e.id = #{employeeId}</if>",
             "order by d.name, e.name, e.id",
@@ -148,6 +149,7 @@ public interface EmployeeMapper {
             "<script>",
             "select id from employees",
             "where status = 'WORKING'",
+            "and role != 'ADMIN'",
             "and department_id in",
             "<foreach collection='departmentIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
             "</script>"

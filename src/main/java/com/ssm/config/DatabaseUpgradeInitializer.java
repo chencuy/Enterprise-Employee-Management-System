@@ -217,6 +217,15 @@ public class DatabaseUpgradeInitializer {
                 "attendance_records",
                 "idx_attendance_employee",
                 "create index idx_attendance_employee on attendance_records(employee_id)");
+        jdbcTemplate.execute("""
+                create table if not exists attendance_settings (
+                  id bigint primary key,
+                  check_in_start time not null,
+                  check_in_end time not null,
+                  late_after time not null,
+                  updated_at datetime not null default current_timestamp on update current_timestamp
+                ) engine=InnoDB default charset=utf8mb4
+                """);
     }
 
     private void ensureApprovalTables() {

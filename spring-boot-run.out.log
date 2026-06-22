@@ -1,0 +1,52 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------------< com.ssm:vue3 >----------------------------
+[INFO] Building enterprise-employee-management 1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.3.5:run (default-cli) > test-compile @ vue3 >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ vue3 ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 7 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ vue3 ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ vue3 ---
+[INFO] skip non existing resourceDirectory E:\ai\project\project_3\vue3\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ vue3 ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.3.5:run (default-cli) < test-compile @ vue3 <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.3.5:run (default-cli) @ vue3 ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.5)
+
+2026-06-22T21:33:02.523+08:00  INFO 5280 --- [           main] com.ssm.Main                             : Starting Main using Java 17.0.18 with PID 5280 (E:\ai\project\project_3\vue3\target\classes started by CC in E:\ai\project\project_3\vue3)
+2026-06-22T21:33:02.527+08:00  INFO 5280 --- [           main] com.ssm.Main                             : No active profile set, falling back to 1 default profile: "default"
+2026-06-22T21:33:03.762+08:00  INFO 5280 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-06-22T21:33:03.786+08:00  INFO 5280 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-06-22T21:33:03.787+08:00  INFO 5280 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-06-22T21:33:03.844+08:00  INFO 5280 --- [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-06-22T21:33:03.845+08:00  INFO 5280 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1269 ms
+2026-06-22T21:33:04.087+08:00  INFO 5280 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-06-22T21:33:04.224+08:00  INFO 5280 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@401c4250
+2026-06-22T21:33:04.225+08:00  INFO 5280 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-06-22T21:33:04.925+08:00  INFO 5280 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-06-22T21:33:04.933+08:00  INFO 5280 --- [           main] com.ssm.Main                             : Started Main in 2.862 seconds (process running for 3.222)
+2026-06-22T21:33:47.221+08:00  INFO 5280 --- [0.0-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-06-22T21:33:47.221+08:00  INFO 5280 --- [0.0-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-06-22T21:33:47.222+08:00  INFO 5280 --- [0.0-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 0 ms

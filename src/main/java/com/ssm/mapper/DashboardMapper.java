@@ -29,7 +29,7 @@ public interface DashboardMapper {
     @Select("select count(1) from approval_requests where status = 'PENDING'")
     long countPendingLeaves();
 
-    @Select("select count(1) from employees where status = 'WORKING'")
+    @Select("select count(1) from employees where status = 'WORKING' and role <> 'ADMIN'")
     long countWorkingEmployees();
 
     @Select("""
@@ -37,7 +37,9 @@ public interface DashboardMapper {
             from attendance_records ar
             join employees e on ar.employee_id = e.id
             where ar.attendance_date = curdate()
+              and ar.check_in_at is not null
               and e.status = 'WORKING'
+              and e.role <> 'ADMIN'
             """)
     long countTodayAttendanceSigned();
 }

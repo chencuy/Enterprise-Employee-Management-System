@@ -104,7 +104,8 @@ public interface AttendanceMapper {
             values (#{employeeId}, #{attendanceDate}, #{checkInAt}, #{source}, #{remark})
             on duplicate key update
               check_in_at = coalesce(attendance_records.check_in_at, values(check_in_at)),
-              source = case when attendance_records.stored_name is null then values(source) else attendance_records.source end,
+              source = case when attendance_records.check_in_at is null then values(source) else attendance_records.source end,
+              remark = case when attendance_records.check_in_at is null then values(remark) else attendance_records.remark end,
               updated_at = now()
             """)
     int upsertCheckIn(AttendanceRecord record);
@@ -136,4 +137,15 @@ public interface AttendanceMapper {
               updated_at = now()
             """)
     int upsertImport(AttendanceRecord record);
+
+    @Insert("""
+            insert into attendance_records (employee_id, attendance_date, check_in_at, source, remark)
+            values (#{employeeId}, #{attendanceDate}, null, #{source}, #{remark})
+            on duplicate key update
+              check_in_at = null,
+              source = values(source),
+              remark = values(remark),
+              updated_at = now()
+            """)
+    int upsertForceAbsent(AttendanceRecord record);
 }
