@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>员工管理系统</title>
+    <link rel="stylesheet" href="/app/styles.css?v=20260612-15">
+</head>
+<body>
+<div id="app">
+    <div class="boot">
+        <div class="boot-error" id="boot-diagnostics">
+            <strong>系统启动诊断中</strong>
+            <span id="boot-status">正在加载前端脚本...</span>
+            <pre id="boot-log" class="boot-log"></pre>
+        </div>
+    </div>
+</div>
+<script src="/app/boot.js?v=20260619-01"></script>
+<script src="/vendor/vue.global.prod.js?v=3.4.38"
+        onload="window.__bootStatus && window.__bootStatus('Vue脚本加载成功')"
+        onerror="window.__bootStatus && window.__bootStatus('Vue脚本加载失败：本地静态资源不可用')"></script>
+<script src="/vendor/lucide.min.js?v=0.468.0"
+        onload="window.__bootLog && window.__bootLog('Lucide脚本加载成功')"
+        onerror="window.__bootLog && window.__bootLog('Lucide脚本加载失败：图标不可用，但不影响登录')"></script>
+<script src="/app/app.js?v=20260619-01"
+        onload="window.__bootLog && window.__bootLog('本地 app.js 加载成功')"
+        onerror="window.__bootStatus && window.__bootStatus('本地 app.js 加载失败：请检查 /app/app.js 是否存在')"></script>
+</body>
+</html>
