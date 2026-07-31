@@ -1,5 +1,9 @@
 # Enterprise Employee Management System
 
+<img width="666" height="552" alt="image" src="https://github.com/user-attachments/assets/df671771-d456-4c5b-b4fc-2bb0b546dcfd" />
+<img width="2555" height="1165" alt="image" src="https://github.com/user-attachments/assets/e974e3ef-088b-4146-8054-dcea783b8109" />
+
+
 一个基于 Spring Boot、MyBatis、Thymeleaf、MySQL 和 Vue 3 的企业级员工管理系统。系统采用前后端分离的交互方式，后端提供 REST API，前端通过 Vue 3 在统一登录入口中根据角色渲染不同工作台。
 
 ## 技术栈
