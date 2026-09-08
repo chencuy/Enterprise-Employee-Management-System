@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc -l)",
+      "Bash(node --check src/main/resources/static/app/app.js)",
+      "Bash(mvn -v)",
+      "Bash(mvn -o -q compile)",
+      "Bash(echo \"=== offline failed, exit $? ===\")",
+      "Bash(node -c src/main/resources/static/app/app.js)",
+      "Bash(mvn compile *)"
+    ]
+  }
+}
