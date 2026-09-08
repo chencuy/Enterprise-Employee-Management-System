@@ -1,0 +1,15 @@
+{
+  "name": "enterprise-employee-management-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^5.4.11",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,54 @@
+server:
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  port: 8080
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_URL:jdbc:mysql://localhost:3306/employee_management?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+  thymeleaf:
+    cache: false
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+  sql:
+    init:
+      mode: never
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8080}
+  file:
+    storage-dir: ${FILE_STORAGE_DIR:./data/files}
+    allowed-extensions: ${FILE_ALLOWED_EXTENSIONS:pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,png,jpg,jpeg,zip}
+    allowed-content-types: ${FILE_ALLOWED_CONTENT_TYPES:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,application/csv,image/png,image/jpeg,application/zip,application/x-zip-compressed}
+  attendance:
+    late-after: ${ATTENDANCE_LATE_AFTER:09:00}
+    check-in-start: ${ATTENDANCE_CHECK_IN_START:07:00}
+    check-in-end: ${ATTENDANCE_CHECK_IN_END:10:00}
+    work-days: ${ATTENDANCE_WORK_DAYS:MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY}
+    holidays: ${ATTENDANCE_HOLIDAYS:}
+    extra-workdays: ${ATTENDANCE_EXTRA_WORKDAYS:}
+  security:
+    trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}
+    hsts-enabled: ${HSTS_ENABLED:false}
+    require-production-hardening: ${REQUIRE_PRODUCTION_HARDENING:false}
+    captcha-hmac-key: ${CAPTCHA_HMAC_KEY:ems-default-captcha-key-change-me}
+    content-security-policy: "${CONTENT_SECURITY_POLICY:default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'}"
+  bootstrap-admin:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    name: ${BOOTSTRAP_ADMIN_NAME:System Administrator}
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
