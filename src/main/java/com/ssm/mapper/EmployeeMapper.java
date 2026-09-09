@@ -213,8 +213,13 @@ public interface EmployeeMapper {
             update employees
             set salary = #{salary}, updated_at = now()
             where id = #{employeeId}
+              and salary <=> #{expectedSalary}
             """)
-    int updateSalary(@Param("employeeId") Long employeeId, @Param("salary") BigDecimal salary);
+    int updateSalaryIfCurrent(
+            @Param("employeeId") Long employeeId,
+            @Param("expectedSalary") BigDecimal expectedSalary,
+            @Param("salary") BigDecimal salary
+    );
 
     @Update("""
             update employees

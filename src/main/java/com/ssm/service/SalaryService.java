@@ -168,7 +168,9 @@ public class SalaryService {
         BigDecimal before = employee.salary == null ? BigDecimal.ZERO : employee.salary;
         BigDecimal after = before.add(amount);
         ensureSalaryLimit(after);
-        employeeMapper.updateSalary(employee.id, after);
+        if (employeeMapper.updateSalaryIfCurrent(employee.id, employee.salary, after) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "员工工资已被其他操作更新，请刷新后重试");
+        }
         SalaryRecord record = insertChange(employee, amount, "RAISE", request.remark, user, before, after);
         notifySalaryChange(employee, user, "涨薪", amount, before, after, record.remark);
         auditLogService.record(
@@ -197,7 +199,9 @@ public class SalaryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "降薪后工资不能小于 0");
         }
         ensureSalaryLimit(after);
-        employeeMapper.updateSalary(employee.id, after);
+        if (employeeMapper.updateSalaryIfCurrent(employee.id, employee.salary, after) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "员工工资已被其他操作更新，请刷新后重试");
+        }
         SalaryRecord record = insertChange(employee, amount, "DECREASE", request.remark, user, before, after);
         notifySalaryChange(employee, user, "降薪", amount, before, after, record.remark);
         auditLogService.record(

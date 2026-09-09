@@ -133,6 +133,7 @@ public interface LeaveRequestMapper {
                 reviewed_at = now(),
                 updated_at = now()
             where id = #{id}
+              and status = 'PENDING'
             """)
     int review(LeaveRequest request);
 }

@@ -2,6 +2,8 @@ target/
 .m2/
 node_modules/
 dist/
+*.log
+*.tmp
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

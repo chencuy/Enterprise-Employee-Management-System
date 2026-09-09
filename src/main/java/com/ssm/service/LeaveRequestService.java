@@ -134,7 +134,9 @@ public class LeaveRequestService {
         request.status = "APPROVED";
         request.approverId = user.id;
         request.reviewComment = normalizeComment(form == null ? null : form.reviewComment);
-        leaveRequestMapper.review(request);
+        if (leaveRequestMapper.review(request) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该休假申请已被其他人处理，请刷新后重试");
+        }
         leaveStatusService.refreshEmployeeLeaveStatus(request.employeeId);
         LeaveRequest updated = leaveRequestMapper.findById(id);
         notificationService.sendChangeNotice(user, employee,
@@ -163,7 +165,9 @@ public class LeaveRequestService {
         request.status = "REJECTED";
         request.approverId = user.id;
         request.reviewComment = normalizeComment(form == null ? null : form.reviewComment);
-        leaveRequestMapper.review(request);
+        if (leaveRequestMapper.review(request) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该休假申请已被其他人处理，请刷新后重试");
+        }
         LeaveRequest updated = leaveRequestMapper.findById(id);
         notificationService.sendChangeNotice(user, employee,
                 "【休假申请通知】您的休假申请已驳回。\n休假时间：" + request.startDate + " 至 " + request.endDate

@@ -377,13 +377,44 @@
               <p v-else class="empty-text">暂无未读消息</p>
             </div>
 
-            <div class="password-panel">
-              <div class="section-title">
-                <h2>账号安全</h2>
+          </section>
+
+          <section v-if="view === 'personalSettings'" class="settings-page">
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <h2>登录安全</h2>
+                  <p>管理登录密码与屏幕锁定保护</p>
+                </div>
+                <span :class="['security-status', { caution: !hasLockPassword }]">
+                  <i :data-lucide="hasLockPassword ? 'check-circle-2' : 'circle-alert'"></i>
+                  {{ hasLockPassword ? '安全防护已开启' : '建议设置锁屏密码' }}
+                </span>
               </div>
-              <button class="ghost-button" @click="openChangePasswordModal"><i data-lucide="lock"></i><span>修改密码</span></button>
-              <button class="ghost-button" @click="openLockPasswordModal"><i data-lucide="shield"></i><span>{{ hasLockPassword ? '修改锁屏密码' : '设置锁屏密码' }}</span></button>
-              <button v-if="hasLockPassword" class="ghost-button danger-text" @click="openClearLockPasswordModal"><i data-lucide="shield-off"></i><span>清除锁屏密码</span></button>
+
+              <div class="settings-item">
+                <div class="settings-item-icon"><i data-lucide="key-round"></i></div>
+                <div class="settings-item-copy"><strong>登录密码</strong><span>用于登录系统，建议定期修改并避免与其他平台重复。</span></div>
+                <button class="settings-action" @click="openChangePasswordModal"><span>修改密码</span><i data-lucide="chevron-right"></i></button>
+              </div>
+
+              <div class="settings-item">
+                <div class="settings-item-icon"><i data-lucide="lock-keyhole"></i></div>
+                <div class="settings-item-copy"><strong>锁屏密码</strong><span>离开电脑时保护当前会话，防止他人直接查看工作内容。</span></div>
+                <span :class="['settings-badge', hasLockPassword ? 'enabled' : 'muted']">{{ hasLockPassword ? '已设置' : '未设置' }}</span>
+                <button class="settings-action" @click="openLockPasswordModal"><span>{{ hasLockPassword ? '修改' : '设置' }}</span><i data-lucide="chevron-right"></i></button>
+              </div>
+
+              <div v-if="hasLockPassword" class="settings-item settings-item-danger">
+                <div class="settings-item-icon"><i data-lucide="shield-off"></i></div>
+                <div class="settings-item-copy"><strong>移除锁屏保护</strong><span>仅在确认当前设备安全时移除锁屏密码。</span></div>
+                <button class="settings-action danger-text" @click="openClearLockPasswordModal"><span>清除</span><i data-lucide="chevron-right"></i></button>
+              </div>
+
+              <div v-if="lockPasswordResetAt" class="lock-reset-banner settings-reset-banner">
+                <i data-lucide="clock-3"></i>
+                <span>已发起重置请求，锁屏密码将于 <strong>{{ lockPasswordResetRemaining }}</strong> 后自动清除</span>
+              </div>
             </div>
 
             <div v-if="changePasswordModalOpen" class="modal-backdrop" @click.self="closeChangePasswordModal">
@@ -432,11 +463,6 @@
                   <button class="primary-button" type="submit" :disabled="clearLockPasswordSubmitting"><i data-lucide="check"></i><span>{{ clearLockPasswordSubmitting ? '清除中' : '确认清除' }}</span></button>
                 </div>
               </form>
-            </div>
-
-            <div v-if="lockPasswordResetAt" class="lock-reset-banner">
-              <i data-lucide="clock"></i>
-              <span>锁屏密码将于 <strong>{{ lockPasswordResetRemaining }}</strong> 后自动清除</span>
             </div>
           </section>
 
@@ -1926,6 +1952,7 @@
       navigation() {
         return [
           { view: 'profile', label: '个人中心', icon: 'user-round' },
+          { view: 'personalSettings', label: '个人设置', icon: 'settings-2' },
           { view: 'approvals', label: '审批中心', icon: 'clipboard-check' },
           { view: 'notifications', label: '通知中心', icon: 'bell' },
           { view: 'messages', label: '消息', icon: 'mail' },
@@ -2505,7 +2532,7 @@
         await this.refreshCurrent();
       },
       async refreshCurrent() {
-        if (this.view === 'profile') {
+        if (this.view === 'profile' || this.view === 'personalSettings') {
           await this.loadProfile();
           await this.loadUnread();
           if (this.isAdmin) {

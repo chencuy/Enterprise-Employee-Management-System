@@ -209,7 +209,9 @@ public class ApprovalService {
         request.status = "APPROVED";
         request.reviewerId = user.id;
         request.reviewComment = normalizeText(form == null ? null : form.reviewComment, false, "审批意见");
-        approvalRequestMapper.review(request);
+        if (approvalRequestMapper.review(request) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该审批已被其他人处理，请刷新后重试");
+        }
         applyApproval(request, user);
         ApprovalRequest updated = approvalRequestMapper.findById(id);
         notifyApplicant(updated, "审批已通过", "您的" + approvalLabel(updated.type) + "申请已通过。");
@@ -224,7 +226,9 @@ public class ApprovalService {
         request.status = "REJECTED";
         request.reviewerId = user.id;
         request.reviewComment = normalizeText(form == null ? null : form.reviewComment, false, "审批意见");
-        approvalRequestMapper.review(request);
+        if (approvalRequestMapper.review(request) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该审批已被其他人处理，请刷新后重试");
+        }
         ApprovalRequest updated = approvalRequestMapper.findById(id);
         notifyApplicant(updated, "审批已驳回", "您的" + approvalLabel(updated.type) + "申请已被驳回。");
         auditLogService.record(user, "审批中心", "审批驳回", "approval", updated.id, updated.applicantName, approvalLabel(updated.type));

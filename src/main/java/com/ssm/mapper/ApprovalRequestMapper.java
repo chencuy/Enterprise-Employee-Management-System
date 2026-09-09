@@ -160,6 +160,7 @@ public interface ApprovalRequestMapper {
                 reviewed_at = now(),
                 updated_at = now()
             where id = #{id}
+              and status = 'PENDING'
             """)
     int review(ApprovalRequest request);
 
@@ -171,7 +172,7 @@ public interface ApprovalRequestMapper {
               <if test='q.type != null and q.type != ""'>and ar.type = #{q.type}</if>
               <if test='q.status != null and q.status != ""'>and ar.status = #{q.status}</if>
               <if test='q.startDate != null'>and ar.created_at &gt;= #{q.startDate}</if>
-              <if test='q.endDate != null'>and ar.created_at &lt; #{q.endDate}</if>
+              <if test='q.endDate != null'>and ar.created_at &lt; date_add(#{q.endDate}, interval 1 day)</if>
             </where>
             order by ar.created_at desc, ar.id desc
             </script>
