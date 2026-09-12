@@ -170,6 +170,29 @@ public class EmployeeService {
         return employee;
     }
 
+    public Employee updateOwnProfile(SessionUser user, String phone, String email, String avatarPath) {
+        Employee existing = profile(user);
+        String nextPhone = AuthService.isBlank(phone) ? existing.phone : phone.trim();
+        String nextEmail = AuthService.isBlank(email) ? existing.email : email.trim();
+        String nextAvatarPath = avatarPath == null ? existing.avatarPath : avatarPath;
+        if (Objects.equals(nextPhone, existing.phone)
+                && Objects.equals(nextEmail, existing.email)
+                && Objects.equals(nextAvatarPath, existing.avatarPath)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "个人资料没有发生变化");
+        }
+        if (nextEmail != null && nextEmail.length() > 120) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱不能超过 120 个字符");
+        }
+        validateProfilePhone(nextPhone);
+        validateProfileEmail(nextEmail);
+        if (employeeMapper.updateProfile(user.id, nextPhone, nextEmail, nextAvatarPath) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "个人资料已被其他操作更新，请刷新后重试");
+        }
+        Employee updated = employeeMapper.findById(user.id);
+        auditLogService.record(user, "个人设置", "修改个人资料", "employee", user.id, user.name, "管理员直接修改个人资料");
+        return updated;
+    }
+
     public List<Employee> options(SessionUser user) {
         leaveStatusService.refreshAllLeaveStatuses();
         if ("ADMIN".equals(user.role)) {
@@ -535,7 +558,32 @@ public class EmployeeService {
         if (trimmed.length() > maxLength) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + "长度不能超过 " + maxLength);
         }
+        if ("电话".equals(fieldName) && !trimmed.matches("^1[3-9]\\d{9}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "手机号必须符合国内格式 1[3-9]xxxxxxxxx");
+        }
+        if ("邮箱".equals(fieldName) && !trimmed.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱格式不正确");
+        }
         return trimmed;
+    }
+
+    private void validateProfilePhone(String value) {
+        if (AuthService.isBlank(value)) return;
+        String phone = value.trim();
+        if (!phone.matches("^1[3-9]\\d{9}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "手机号必须符合国内格式 1[3-9]xxxxxxxxx");
+        }
+    }
+
+    private void validateProfileEmail(String value) {
+        if (AuthService.isBlank(value)) return;
+        String email = value.trim();
+        if (email.length() > 120) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱不能超过 120 个字符");
+        }
+        if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱格式不正确");
+        }
     }
 
     private void validatePassword(String password) {

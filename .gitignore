@@ -4,12 +4,16 @@ node_modules/
 dist/
 *.log
 *.tmp
+data/logs/**
+data/files/avatar-*
+data/avatars/**
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
+.idea/vcs.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/

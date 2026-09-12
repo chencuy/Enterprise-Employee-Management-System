@@ -246,6 +246,9 @@ public interface EmployeeMapper {
             """)
     int updatePassword(@Param("employeeId") Long employeeId, @Param("password") String password);
 
+    @Update("update employees set phone = #{phone}, email = #{email}, avatar_path = #{avatarPath}, updated_at = now() where id = #{employeeId}")
+    int updateProfile(@Param("employeeId") Long employeeId, @Param("phone") String phone, @Param("email") String email, @Param("avatarPath") String avatarPath);
+
     @Update("""
             update employees
             set lock_password = #{lockPassword}, updated_at = now()

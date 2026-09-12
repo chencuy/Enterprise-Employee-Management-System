@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ApprovalService {
     private static final int PAGE_SIZE_LIMIT = 5;
     private static final int MAX_TEXT_LENGTH = 500;
-    private static final Set<String> TYPES = Set.of("LEAVE", "TRANSFER", "SALARY_RAISE", "RESIGNATION", "FILE_REQUEST");
+    private static final Set<String> TYPES = Set.of("LEAVE", "TRANSFER", "SALARY_RAISE", "RESIGNATION", "FILE_REQUEST", "PROFILE_UPDATE");
     private static final Set<String> SUPERVISOR_REVIEW_TYPES = Set.of("LEAVE", "FILE_REQUEST");
 
     private final ApprovalRequestMapper approvalRequestMapper;
@@ -46,6 +46,7 @@ public class ApprovalService {
     private final NotificationCenterService notificationCenterService;
     private final LeaveStatusService leaveStatusService;
     private final SqlSession sqlSession;
+    private final AvatarStorageService avatarStorageService;
 
     public ApprovalService(
             ApprovalRequestMapper approvalRequestMapper,
@@ -55,7 +56,8 @@ public class ApprovalService {
             AuditLogService auditLogService,
             NotificationCenterService notificationCenterService,
             LeaveStatusService leaveStatusService,
-            SqlSession sqlSession
+            SqlSession sqlSession,
+            AvatarStorageService avatarStorageService
     ) {
         this.approvalRequestMapper = approvalRequestMapper;
         this.employeeMapper = employeeMapper;
@@ -65,6 +67,7 @@ public class ApprovalService {
         this.notificationCenterService = notificationCenterService;
         this.leaveStatusService = leaveStatusService;
         this.sqlSession = sqlSession;
+        this.avatarStorageService = avatarStorageService;
     }
 
     public PageResult<ApprovalRequest> page(int page, int size, SessionUser user) {
@@ -206,6 +209,8 @@ public class ApprovalService {
     public ApprovalRequest approve(Long id, ApprovalRequestForm form, SessionUser user) {
         ApprovalRequest request = requireVisible(id, user, true);
         ensurePending(request);
+        // 审批时再次校验资料，防止历史申请、旧版本接口或直接构造的请求绕过创建阶段校验。
+        validateProfileUpdate(request);
         request.status = "APPROVED";
         request.reviewerId = user.id;
         request.reviewComment = normalizeText(form == null ? null : form.reviewComment, false, "审批意见");
@@ -230,6 +235,7 @@ public class ApprovalService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "该审批已被其他人处理，请刷新后重试");
         }
         ApprovalRequest updated = approvalRequestMapper.findById(id);
+        cleanupRejectedProfileAvatar(updated);
         notifyApplicant(updated, "审批已驳回", "您的" + approvalLabel(updated.type) + "申请已被驳回。");
         auditLogService.record(user, "审批中心", "审批驳回", "approval", updated.id, updated.applicantName, approvalLabel(updated.type));
         return updated;
@@ -281,6 +287,29 @@ public class ApprovalService {
         }
         if ("FILE_REQUEST".equals(type)) {
             request.fileName = normalizeShortText(form.fileName, false, "文件名称", 255);
+        }
+        if ("PROFILE_UPDATE".equals(type)) {
+            Employee current = employeeMapper.findById(user.id);
+            if (current == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "员工不存在");
+            }
+            boolean anyProvided = form.profilePhone != null || form.profileEmail != null || form.profileAvatarPath != null;
+            if (!anyProvided) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请至少填写一项资料变更");
+            }
+            request.profilePhone = form.profilePhone == null ? current.phone : normalizeShortText(form.profilePhone, false, "电话", 30);
+            request.profileEmail = form.profileEmail == null ? current.email : normalizeShortText(form.profileEmail, false, "邮箱", 120);
+            request.profileAvatarPath = form.profileAvatarPath == null ? current.avatarPath : normalizeShortText(form.profileAvatarPath, false, "头像", 160);
+            validateProfilePhone(request.profilePhone);
+            validateProfileEmail(request.profileEmail);
+            if (form.profileAvatarPath != null && !avatarStorageService.isPendingPath(request.profileAvatarPath)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "头像文件无效");
+            }
+            if (Objects.equals(request.profilePhone, current.phone)
+                    && Objects.equals(request.profileEmail, current.email)
+                    && Objects.equals(request.profileAvatarPath, current.avatarPath)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "个人资料没有发生变化");
+            }
         }
         return request;
     }
@@ -361,6 +390,81 @@ public class ApprovalService {
             }
             employeeMapper.updateLeaveState(applicant.id, "RESIGNED", null);
         }
+        if ("PROFILE_UPDATE".equals(request.type)) {
+            if (!"ADMIN".equals(user.role)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "个人资料变更需要管理员审批");
+            }
+            validateProfilePhone(request.profilePhone);
+            validateProfileEmail(request.profileEmail);
+            String oldAvatarPath = applicant.avatarPath;
+            String pendingAvatarPath = request.profileAvatarPath;
+            String nextAvatarPath = pendingAvatarPath;
+            try {
+                if (avatarStorageService.isPendingPath(pendingAvatarPath)) {
+                    nextAvatarPath = avatarStorageService.activeName(pendingAvatarPath);
+                }
+            } catch (java.io.IOException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "待审批头像路径无效");
+            }
+            if (employeeMapper.updateProfile(applicant.id, request.profilePhone, request.profileEmail, nextAvatarPath) != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "员工资料已被其他操作更新，请刷新后重试");
+            }
+            try {
+                if (avatarStorageService.isPendingPath(pendingAvatarPath)) {
+                    avatarStorageService.promote(pendingAvatarPath, applicant.id);
+                }
+            } catch (java.io.IOException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "待审批头像不存在或已失效");
+            }
+            if (nextAvatarPath != null && !Objects.equals(oldAvatarPath, nextAvatarPath)) {
+                avatarStorageService.cleanupOldActive(applicant.id, nextAvatarPath);
+            }
+        }
+    }
+
+    private void validateProfileUpdate(ApprovalRequest request) {
+        if (request == null || !"PROFILE_UPDATE".equals(request.type)) {
+            return;
+        }
+        validateProfilePhone(request.profilePhone);
+        validateProfileEmail(request.profileEmail);
+        if (request.profileAvatarPath != null
+                && !avatarStorageService.isPendingPath(request.profileAvatarPath)
+                && !avatarStorageService.isActivePath(request.profileAvatarPath)
+                && !request.profileAvatarPath.matches("avatar-(pending|active)-[A-Za-z0-9-]{20,40}\\.(png|jpg)")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "头像文件无效，无法审批");
+        }
+    }
+
+    private void validateProfilePhone(String value) {
+        if (AuthService.isBlank(value)) {
+            return;
+        }
+        String phone = value.trim();
+        if (!phone.matches("^1[3-9]\\d{9}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "手机号必须符合国内格式 1[3-9]xxxxxxxxx，无法审批");
+        }
+    }
+
+    private void validateProfileEmail(String value) {
+        if (AuthService.isBlank(value)) {
+            return;
+        }
+        String email = value.trim();
+        if (email.length() > 120) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱不能超过 120 个字符，无法审批");
+        }
+        if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "邮箱格式不正确，无法审批");
+        }
+    }
+
+    private void cleanupRejectedProfileAvatar(ApprovalRequest request) {
+        if (request == null || !"PROFILE_UPDATE".equals(request.type)
+                || request.profileAvatarPath == null || !avatarStorageService.isPendingPath(request.profileAvatarPath)) {
+            return;
+        }
+        avatarStorageService.delete(request.profileAvatarPath);
     }
 
     private void notifyReviewers(ApprovalRequest request, SessionUser user) {
@@ -416,6 +520,9 @@ public class ApprovalService {
         }
         if ("FILE_REQUEST".equals(type)) {
             return "文件";
+        }
+        if ("PROFILE_UPDATE".equals(type)) {
+            return "个人资料变更";
         }
         return "审批";
     }

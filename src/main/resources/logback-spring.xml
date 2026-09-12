@@ -1,0 +1,45 @@
+<configuration>
+    <springProperty scope="context" name="logFile" source="logging.file.name"
+                    defaultValue="${user.dir}/data/logs/application.log"/>
+    <springProperty scope="context" name="maxHistory" source="logging.logback.rollingpolicy.max-history"
+                    defaultValue="2"/>
+    <springProperty scope="context" name="cleanHistoryOnStart" source="logging.logback.rollingpolicy.clean-history-on-start"
+                    defaultValue="true"/>
+    <springProperty scope="context" name="maxFileSize" source="logging.logback.rollingpolicy.max-file-size"
+                    defaultValue="10MB"/>
+    <springProperty scope="context" name="totalSizeCap" source="logging.logback.rollingpolicy.total-size-cap"
+                    defaultValue="1GB"/>
+    <springProperty scope="context" name="consoleCharset" source="logging.charset.console"
+                    defaultValue="UTF-8"/>
+    <springProperty scope="context" name="fileCharset" source="logging.charset.file"
+                    defaultValue="UTF-8"/>
+
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <charset>${consoleCharset}</charset>
+            <layout class="com.ssm.config.JsonLogLayout"/>
+        </encoder>
+    </appender>
+
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${logFile}</file>
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <charset>${fileCharset}</charset>
+            <layout class="com.ssm.config.JsonLogLayout"/>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${logFile}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>${maxFileSize}</maxFileSize>
+            <!-- LogRetentionCleanup enforces the exact natural-day retention window. -->
+            <maxHistory>${maxHistory}</maxHistory>
+            <totalSizeCap>${totalSizeCap}</totalSizeCap>
+            <cleanHistoryOnStart>${cleanHistoryOnStart}</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="com.ssm" level="${LOG_LEVEL_APP:-INFO}"/>
+    <root level="${LOG_LEVEL_ROOT:-INFO}">
+        <appender-ref ref="JSON_CONSOLE"/>
+        <appender-ref ref="JSON_FILE"/>
+    </root>
+</configuration>

@@ -34,6 +34,13 @@ public class LoginLogService {
         return new PageResult<>(total, page, size, records);
     }
 
+    public PageResult<LoginLog> currentUserPage(int page, int size, SessionUser user) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 20);
+        return new PageResult<>(loginLogMapper.countForEmployee(user.id), safePage, safeSize,
+                loginLogMapper.pageForEmployee(user.id, (safePage - 1) * safeSize, safeSize));
+    }
+
     public void record(String username, Employee employee, String ipAddress, String result, String detail, boolean kickedOffline) {
         LoginLog log = new LoginLog();
         log.employeeId = employee == null ? null : employee.id;

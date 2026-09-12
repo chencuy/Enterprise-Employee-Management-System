@@ -17,6 +17,7 @@ public class DatabaseUpgradeInitializer {
     public void ensureAnnouncementTables() {
         addColumnIfMissing("employees", "lock_password", "alter table employees add column lock_password varchar(160) after password");
         addColumnIfMissing("employees", "lock_password_reset_at", "alter table employees add column lock_password_reset_at datetime after lock_password");
+        addColumnIfMissing("employees", "avatar_path", "alter table employees add column avatar_path varchar(160) after email");
 
         jdbcTemplate.execute("""
                 create table if not exists announcements (
@@ -256,6 +257,9 @@ public class DatabaseUpgradeInitializer {
         addColumnIfMissing("approval_requests", "start_date", "alter table approval_requests add column start_date date after amount");
         addColumnIfMissing("approval_requests", "end_date", "alter table approval_requests add column end_date date after start_date");
         addColumnIfMissing("approval_requests", "file_name", "alter table approval_requests add column file_name varchar(255) after end_date");
+        addColumnIfMissing("approval_requests", "profile_phone", "alter table approval_requests add column profile_phone varchar(30) after file_name");
+        addColumnIfMissing("approval_requests", "profile_email", "alter table approval_requests add column profile_email varchar(120) after profile_phone");
+        addColumnIfMissing("approval_requests", "profile_avatar_path", "alter table approval_requests add column profile_avatar_path varchar(160) after profile_email");
         createIndexIfMissing(
                 "approval_requests",
                 "idx_approval_applicant",

@@ -55,7 +55,8 @@
     TRANSFER: '调岗',
     SALARY_RAISE: '涨薪',
     RESIGNATION: '离职',
-    FILE_REQUEST: '文件申请'
+    FILE_REQUEST: '文件申请',
+    PROFILE_UPDATE: '个人资料变更'
   };
 
   const APPROVAL_STATUS_LABELS = {
@@ -220,7 +221,7 @@
       <div v-else class="app-shell">
         <aside class="sidebar">
           <div class="sidebar-brand">
-            <span class="brand-mark">EMS</span>
+            <span class="brand-mark brand-avatar"><img v-if="user.avatarPath" :src="avatarUrl(user.avatarPath)" alt="用户头像" @error="handleAvatarError"><span v-else>EMS</span></span>
             <div>
               <strong>员工管理系统</strong>
               <small>{{ roleLabel(user.role) }}</small>
@@ -417,6 +418,24 @@
               </div>
             </div>
 
+            <div class="settings-card">
+              <div class="settings-card-header"><div><h2>个人资料维护</h2><p>{{ isAdmin ? '管理员修改后立即生效' : '电话、邮箱和头像修改需管理员审批后生效' }}</p></div><span :class="['settings-badge', isAdmin ? 'enabled' : 'muted']">{{ isAdmin ? '直接生效' : '审批生效' }}</span></div>
+              <div class="settings-item settings-item-last profile-summary-item">
+                <span class="profile-avatar-small"><img v-if="profile?.avatarPath" :src="avatarUrl(profile.avatarPath)" alt="当前头像" @error="handleAvatarError"><span v-else>EMS</span></span>
+                <div class="settings-item-copy"><strong>{{ profile?.phone || '未设置手机号' }}</strong><span>{{ profile?.email || '未设置邮箱' }} · 头像{{ profile?.avatarPath ? '已设置' : '未设置' }}</span></div>
+                <button class="settings-action" @click="openProfileModal"><span>修改</span><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-card-header"><div><h2>登录与会话</h2><p>仅展示当前账号自己的登录记录</p></div><span class="settings-badge enabled">当前会话有效</span></div>
+              <div class="settings-item settings-item-last">
+                <div class="settings-item-icon"><i data-lucide="history"></i></div>
+                <div class="settings-item-copy"><strong>当前账号登录记录</strong><span>查看当前账号的登录时间、IP 地址、结果和说明。</span></div>
+                <button class="settings-action" @click="openLoginSessionModal"><span>查看</span><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+
             <div v-if="changePasswordModalOpen" class="modal-backdrop" @click.self="closeChangePasswordModal">
               <form class="form-panel modal-panel" @submit.prevent="submitChangePassword">
                 <div class="section-title">
@@ -431,6 +450,40 @@
                   <button type="button" class="ghost-button" @click="closeChangePasswordModal">取消</button>
                   <button class="primary-button" type="submit" :disabled="changePasswordSubmitting"><i data-lucide="check"></i><span>{{ changePasswordSubmitting ? '提交中' : '确认修改' }}</span></button>
                 </div>
+              </form>
+            </div>
+
+            <div v-if="loginSessionModalOpen" class="modal-backdrop" @click.self="closeLoginSessionModal">
+              <div class="form-panel modal-panel wide-modal login-session-modal">
+                <div class="section-title">
+                  <div><h2>登录与会话</h2><p>仅展示当前账号自己的登录记录</p></div>
+                  <button type="button" class="icon-button" title="关闭" @click="closeLoginSessionModal"><i data-lucide="x"></i></button>
+                </div>
+                <div class="session-summary"><div><span>当前账号</span><strong>{{ user.name }}</strong></div><div><span>当前角色</span><strong>{{ roleLabel(user.role) }}</strong></div><div><span>会话状态</span><strong>在线</strong></div></div>
+                <div class="table-wrap settings-login-table"><table class="list-table"><thead><tr><th>登录时间</th><th>IP 地址</th><th>结果</th><th>说明</th></tr></thead><tbody><tr v-for="item in myLoginLogs.records" :key="item.id"><td>{{ formatDateTime(item.createdAt) }}</td><td>{{ item.ipAddress || '-' }}</td><td><span class="status-pill">{{ loginResultLabel(item.result) }}</span></td><td>{{ item.detail || '-' }}</td></tr></tbody></table><p v-if="!myLoginLogs.records.length" class="empty-text table-empty">暂无登录记录</p></div>
+                <div class="pagination inline-actions settings-modal-pagination">
+                  <span>共 {{ myLoginLogs.total || 0 }} 条</span>
+                  <div class="pagination-controls"><button class="ghost-button" :disabled="myLoginLogs.page <= 1" @click="loginSessionPageTo(myLoginLogs.page - 1)">上一页</button><span>第 {{ myLoginLogs.page }} 页</span><button class="ghost-button" :disabled="myLoginLogs.page * myLoginLogs.size >= myLoginLogs.total" @click="loginSessionPageTo(myLoginLogs.page + 1)">下一页</button></div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="profileModalOpen" class="modal-backdrop" @click.self="closeProfileModal">
+              <form class="form-panel modal-panel wide-modal" @submit.prevent="submitProfileUpdateRequest">
+                <div class="section-title">
+                  <div><h2>修改个人资料</h2><p>{{ isAdmin ? '管理员修改后立即生效' : '提交后等待管理员审批' }}</p></div>
+                  <button type="button" class="icon-button" title="关闭" @click="closeProfileModal"><i data-lucide="x"></i></button>
+                </div>
+                <div class="profile-avatar-editor">
+                  <span class="profile-avatar-preview"><img v-if="profileAvatarPreview || profile?.avatarPath" :src="profileAvatarPreview || avatarUrl(profile.avatarPath)" alt="头像预览" @error="handleAvatarError"><span v-else>EMS</span></span>
+                  <label class="ghost-button avatar-picker"><i data-lucide="image-up"></i><span>选择头像</span><input type="file" accept="image/png,image/jpeg" @change="selectProfileAvatar"></label>
+                  <small>PNG/JPG，最大 2MB；审批通过后显示在侧边栏。</small>
+                </div>
+                <div class="profile-request-fields">
+                  <label><span>手机号</span><input v-model.trim="profileUpdateForm.phone" maxlength="11" inputmode="numeric" pattern="1[3-9][0-9]{9}" placeholder="请输入 1[3-9] 开头的 11 位手机号"></label>
+                  <label><span>邮箱</span><input v-model.trim="profileUpdateForm.email" type="email" maxlength="120" placeholder="请输入新邮箱"></label>
+                </div>
+                <div class="form-actions"><span class="settings-form-note">{{ isAdmin ? '管理员资料修改会立即更新' : '提交后可在审批中心查看进度' }}</span><button type="button" class="ghost-button" @click="closeProfileModal">取消</button><button class="primary-button" type="submit" :disabled="profileUpdateSubmitting"><i :data-lucide="isAdmin ? 'save' : 'send'"></i><span>{{ profileUpdateSubmitting ? '处理中' : (isAdmin ? '保存修改' : '提交审批') }}</span></button></div>
               </form>
             </div>
 
@@ -1034,7 +1087,6 @@
                       <td><span :class="['read-state', { unread: !item.readFlag }]">{{ item.readFlag ? '已读' : '未读' }}</span></td>
                       <td>{{ formatDateTime(item.createdAt) }}</td>
                       <td class="row-actions">
-                        <button v-if="!item.readFlag" class="ghost-button compact-button" @click="markNotificationRead(item)">已读</button>
                         <button class="ghost-button compact-button" @click="openNotificationSource(item)">查看</button>
                       </td>
                     </tr>
@@ -1130,8 +1182,8 @@
                 <h2>{{ isAdmin ? '文件管理' : '我的文件' }}</h2>
                 <span>共 {{ filePage.total }} 个文件</span>
               </div>
-              <div class="table-wrap list-table-wrap">
-                <table class="list-table file-table">
+              <div class="table-wrap list-table-wrap file-table-wrap">
+                <table :class="['list-table', 'file-table', { 'file-table-admin': isAdmin, 'file-table-user': !isAdmin }]">
                   <thead>
                     <tr>
                       <th>文件名</th>
@@ -1145,7 +1197,9 @@
                   </thead>
                   <tbody>
                     <tr v-for="file in files" :key="file.id" :class="{ 'file-row': true, unread: !isAdmin && !file.readFlag }">
-                      <td class="file-name-cell" :title="file.originalName">{{ file.originalName }}</td>
+                      <td :class="['file-name-cell', { expanded: expandedFileNameId === file.id }]" :title="expandedFileNameId === file.id ? '' : file.originalName" @click="toggleFileName(file)">
+                        {{ expandedFileNameId === file.id ? file.originalName : fileNamePreview(file.originalName) }}
+                      </td>
                       <td>{{ formatSize(file.sizeBytes) }}</td>
                       <td v-if="!isAdmin">{{ nameWithId(file.uploaderName || '管理员', file.uploaderId) }}</td>
                       <td v-if="isAdmin">已下载 {{ file.downloadedCount }} / 共 {{ file.recipientCount }}</td>
@@ -1758,6 +1812,12 @@
         view: 'profile',
         feedback: { type: 'success', text: '' },
         profile: null,
+        profileUpdateForm: { phone: '', email: '', avatar: null },
+        profileAvatarPreview: '',
+        profileUpdateSubmitting: false,
+        profileModalOpen: false,
+        myLoginLogs: { total: 0, page: 1, size: 5, records: [] },
+        loginSessionModalOpen: false,
         dashboardOpen: false,
         dashboardStats: {
           employeeTotal: 0,
@@ -1864,6 +1924,7 @@
         fileDetailModalOpen: false,
         fileDetailTarget: null,
         fileRecipientDetails: [],
+        expandedFileNameId: null,
         fileSubmitting: false,
         fileForm: { departmentIds: [], employeeIds: [], file: null, fileName: '' },
         attendances: [],
@@ -2148,7 +2209,7 @@
       },
       async api(url, options = {}) {
         const method = (options.method || 'GET').toUpperCase();
-        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        const headers = { ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) };
         if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && this.csrfToken) {
           headers['X-CSRF-Token'] = this.csrfToken;
         }
@@ -2579,6 +2640,96 @@
       },
       async loadProfile() {
         this.profile = await this.api('/api/profile');
+        if (this.user) {
+          this.user.avatarPath = this.profile?.avatarPath || null;
+        }
+        this.profileUpdateForm.phone = this.profile?.phone || '';
+        this.profileUpdateForm.email = this.profile?.email || '';
+      },
+      openProfileModal() {
+        this.profileUpdateForm.phone = this.profile?.phone || '';
+        this.profileUpdateForm.email = this.profile?.email || '';
+        this.profileUpdateForm.avatar = null;
+        this.profileAvatarPreview = '';
+        this.profileModalOpen = true;
+        this.refreshIcons();
+      },
+      closeProfileModal() {
+        this.profileModalOpen = false;
+        this.profileUpdateForm.avatar = null;
+        this.profileAvatarPreview = '';
+      },
+      async loadMyLoginLogs(page = 1) {
+        const safePage = Math.max(Number(page) || 1, 1);
+        this.myLoginLogs = await this.api('/api/login-logs/me?page=' + safePage + '&size=5');
+      },
+      async openLoginSessionModal() {
+        this.loginSessionModalOpen = true;
+        await this.loadMyLoginLogs(1);
+        this.refreshIcons();
+      },
+      closeLoginSessionModal() {
+        this.loginSessionModalOpen = false;
+      },
+      async loginSessionPageTo(page) {
+        if (!this.loginSessionModalOpen) return;
+        await this.loadMyLoginLogs(page);
+        this.refreshIcons();
+      },
+      avatarUrl(path) {
+        return path ? '/api/profile/avatar/' + encodeURIComponent(path) : '';
+      },
+      handleAvatarError(event) {
+        if (event?.target) {
+          event.target.style.display = 'none';
+        }
+        if (this.user?.avatarPath) {
+          this.user.avatarPath = null;
+        }
+        if (this.profile?.avatarPath) {
+          this.profile.avatarPath = null;
+        }
+        this.profileAvatarPreview = '';
+      },
+      selectProfileAvatar(event) {
+        const file = event.target.files?.[0] || null;
+        this.profileUpdateForm.avatar = file;
+        this.profileAvatarPreview = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.profileAvatarPreview = typeof reader.result === 'string' ? reader.result : '';
+          this.refreshIcons();
+        };
+        reader.readAsDataURL(file);
+      },
+      async submitProfileUpdateRequest() {
+        this.profileUpdateSubmitting = true;
+        try {
+          const phone = String(this.profileUpdateForm.phone || '').trim();
+          const email = String(this.profileUpdateForm.email || '').trim();
+          if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
+            throw new Error('手机号必须符合国内格式：1[3-9] 开头的 11 位数字');
+          }
+          if (email && (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+            throw new Error('邮箱格式不正确，长度不能超过 120 个字符');
+          }
+          const form = new FormData();
+          form.append('phone', phone);
+          form.append('email', email);
+          if (this.profileUpdateForm.avatar) form.append('avatar', this.profileUpdateForm.avatar);
+          await this.api('/api/profile/update-request', { method: 'POST', body: form });
+          this.showFeedback('success', this.isAdmin ? '个人资料已保存' : '个人资料变更已提交，等待管理员审批');
+          await this.loadProfile();
+          this.profileUpdateForm.avatar = null;
+          this.profileAvatarPreview = '';
+          this.closeProfileModal();
+        } catch (error) {
+          this.showFeedback('error', error.message);
+        } finally {
+          this.profileUpdateSubmitting = false;
+          this.refreshIcons();
+        }
       },
       async loadUnread() {
         this.unreadCount = await this.api('/api/profile/unread-count');
@@ -3340,7 +3491,15 @@
       },
       filePageTo(page) {
         this.fileFilter.page = page;
+        this.expandedFileNameId = null;
         this.loadFiles();
+      },
+      toggleFileName(file) {
+        this.expandedFileNameId = this.expandedFileNameId === file.id ? null : file.id;
+      },
+      fileNamePreview(name) {
+        const value = String(name || '-');
+        return value.length > 18 ? value.slice(0, 18) + '...' : value;
       },
       openFileModal() {
         this.resetFileForm();
@@ -3946,6 +4105,13 @@
         }
         if (item.type === 'FILE_REQUEST') {
           return '文件：' + (item.fileName || '-') + reason;
+        }
+        if (item.type === 'PROFILE_UPDATE') {
+          const changes = [];
+          if (item.profilePhone) changes.push('电话：' + item.profilePhone);
+          if (item.profileEmail) changes.push('邮箱：' + item.profileEmail);
+          if (item.profileAvatarPath) changes.push('头像');
+          return (changes.join('，') || '个人资料') + reason;
         }
         return item.reason || '-';
       },

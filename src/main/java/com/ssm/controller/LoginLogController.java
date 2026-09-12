@@ -47,4 +47,13 @@ public class LoginLogController {
         query.size = size;
         return ApiResponse.ok(loginLogService.page(query, authService.currentUser(session)));
     }
+
+    @GetMapping("/me")
+    public ApiResponse<PageResult<LoginLog>> currentUserPage(
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "5") int size,
+            HttpSession session
+    ) {
+        return ApiResponse.ok(loginLogService.currentUserPage(page, size, authService.currentUser(session)));
+    }
 }

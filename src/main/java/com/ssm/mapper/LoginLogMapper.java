@@ -20,6 +20,12 @@ public interface LoginLogMapper {
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(LoginLog log);
 
+    @Select("select * from login_logs where employee_id = #{employeeId} order by created_at desc, id desc limit #{size} offset #{offset}")
+    List<LoginLog> pageForEmployee(@Param("employeeId") Long employeeId, @Param("offset") int offset, @Param("size") int size);
+
+    @Select("select count(1) from login_logs where employee_id = #{employeeId}")
+    long countForEmployee(@Param("employeeId") Long employeeId);
+
     @Select({
             "<script>",
             "select * from login_logs",

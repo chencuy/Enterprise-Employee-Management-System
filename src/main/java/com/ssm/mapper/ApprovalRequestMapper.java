@@ -143,10 +143,10 @@ public interface ApprovalRequestMapper {
     @Insert("""
             insert into approval_requests (
               type, applicant_id, target_employee_id, target_department_id,
-              amount, start_date, end_date, file_name, reason, status
+              amount, start_date, end_date, file_name, profile_phone, profile_email, profile_avatar_path, reason, status
             ) values (
               #{type}, #{applicantId}, #{targetEmployeeId}, #{targetDepartmentId},
-              #{amount}, #{startDate}, #{endDate}, #{fileName}, #{reason}, #{status}
+              #{amount}, #{startDate}, #{endDate}, #{fileName}, #{profilePhone}, #{profileEmail}, #{profileAvatarPath}, #{reason}, #{status}
             )
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")

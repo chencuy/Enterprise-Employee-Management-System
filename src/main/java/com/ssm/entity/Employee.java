@@ -18,6 +18,7 @@ public class Employee {
     public String name;
     public String phone;
     public String email;
+    public String avatarPath;
     public String gender;
     public BigDecimal salary;
     public Long departmentId;

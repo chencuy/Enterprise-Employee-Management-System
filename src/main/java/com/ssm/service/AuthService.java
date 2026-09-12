@@ -211,6 +211,7 @@ public class AuthService {
                 employee.status,
                 employee.departmentId,
                 employee.departmentName,
+                employee.avatarPath,
                 csrfToken,
                 hasLockPassword,
                 employee.lockPasswordResetAt == null ? null : employee.lockPasswordResetAt.toString(),

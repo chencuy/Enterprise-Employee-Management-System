@@ -11,6 +11,9 @@ public class ApprovalRequestForm {
     public LocalDate startDate;
     public LocalDate endDate;
     public String fileName;
+    public String profilePhone;
+    public String profileEmail;
+    public String profileAvatarPath;
     public String reason;
     public String reviewComment;
 }

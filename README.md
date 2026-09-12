@@ -2,6 +2,10 @@
 
 一个基于 Spring Boot、MyBatis、Thymeleaf、MySQL 和 Vue 3 的企业级员工管理系统。系统采用前后端分离的交互方式，后端提供 REST API，前端通过 Vue 3 在统一登录入口中根据角色渲染不同工作台。
 
+> 当前开发状态、未提交改动、后续任务和已知避坑事项请阅读 [HANDOFF.md](HANDOFF.md)。接手开发前应先阅读该文档。
+
+> 重要：当前仍是测试环境工作区。文档和业务改动已经补齐，但头像审批的真实端到端验证以及数据库与文件移动顺序的 P1 修复仍待完成；在此之前不要直接作为生产版本部署。
+
 ## 技术栈
 
 - 后端：Spring Boot 3.3.5、Spring MVC、MyBatis、Jakarta Servlet
@@ -58,6 +62,18 @@
 - 锁屏密码显示已设置/未设置状态，可设置或修改
 - 已设置锁屏密码时可验证后清除；已发起重置时显示 7 天倒计时
 - 页面宽度随工作区自适应，支持窄屏布局
+- 登录与会话区域默认仅展示功能入口，点击“查看”后以弹窗展示当前登录用户自己的登录记录和当前会话状态，登录记录支持分页；侧边栏固定为视口高度并独立滚动，避免设置页面内容过长挤走退出登录按钮
+- 个人资料维护默认仅展示当前资料摘要，点击“修改”后以弹窗编辑电话、邮箱和头像；资料在管理员审批通过前不会替换当前值
+- 手机号必须符合国内格式 `1[3-9]xxxxxxxxx`（11 位纯数字），邮箱需符合基本邮箱格式并且不超过 120 个字符；前端提交、后端创建申请及管理员审批通过时都会重复校验，异常或历史脏数据会被阻止生效
+- 头像仅支持 PNG/JPG，最大 2MB；选择文件后使用本地数据预览，审批通过后显示在侧边栏绿色头像区域，未设置或文件缺失时显示默认 EMS 标识
+- 头像独立存放在 `AVATAR_STORAGE_DIR`（默认 `data/avatars`），与普通文件的 `data/files` 分离；正式头像按 `员工编号_avatar_时间.扩展名` 命名，每个员工只保留一个正式头像，待审批头像存放在 `pending` 子目录
+- 管理员没有更高一级审批人，管理员修改自己的电话、邮箱和头像时直接保存；普通员工和主管仍需管理员审批
+
+个人资料修改的接口边界如下：
+
+- `POST /api/profile/update-request`：提交电话、邮箱或头像修改；管理员直接生效，普通员工和主管生成 `PROFILE_UPDATE` 审批申请
+- `GET /api/profile/avatar/{name}`：读取当前用户自己已经生效的头像；待审批头像不可读取
+- 头像文件不进入 Git，部署时必须备份和持久化 `AVATAR_STORAGE_DIR`
 
 ### 员工管理
 
@@ -187,8 +203,8 @@
 
 - 统一汇总消息、公告、工资变动、文件分发、考勤异常、审批结果等提醒
 - 通知中心使用与员工管理一致的五行分页表格
-- 支持未读数量统计、单条标记已读、全部标记已读
-- 点击通知可以跳转到对应的消息、公告、文件、审批或考勤页面
+- 支持未读数量统计和全部标记已读；单条通知的操作区只显示“查看”
+- 点击“查看”时先自动标记该通知为已读，再跳转到对应的消息、公告、文件、审批或考勤页面
 - 今日未签到会在通知中心显示考勤异常提示，并计入顶部通知数量
 
 ### 操作日志审计
@@ -205,6 +221,43 @@
 - 同一账号从新会话登录并挤掉旧会话时，会在新登录日志中标记“挤下线”
 - 管理员可以按账号、IP、结果、日期范围分页查询
 - 个人设置中的登录与会话信息仅面向当前用户，不展示其他账号的登录记录
+- `GET /api/login-logs/me`：只返回当前会话对应员工的登录记录；服务端不接受前端传入员工编号来切换查询对象
+
+### 系统运行日志
+
+- Spring Boot 默认使用 SLF4J + Logback 输出运行日志
+- 当前已记录 API 未处理异常和休假状态同步等运行信息
+- 登录行为和业务操作不会只依赖控制台日志，分别持久化到 `login_logs` 和 `audit_logs` 数据表
+- 运行日志同时输出到控制台和文件，默认文件为 `${user.dir}/data/logs/application.log`，可通过 `LOG_FILE` 指定绝对路径
+- 日志按天轮转并压缩为 `.gz` 文件，单文件默认上限 10MB；同一天超过上限时使用序号分片
+- 日志只保留最近 3 个自然日：清理器按归档文件名日期删除早于“今天往前 2 天”的日志，启动时和每小时自动执行；Logback 的数量限制仅作为兜底。可通过 `LOG_RETENTION_NATURAL_DAYS`（默认 `3`）和 `LOG_CLEAN_HISTORY_ON_START` 调整，生产环境不建议改变自然日保留期
+- 默认总日志容量上限为 1GB，可通过 `LOG_TOTAL_SIZE_CAP` 调整；日志目录已加入 Git 忽略规则
+- 根日志级别和应用日志级别默认为 `INFO`，可通过 `LOG_LEVEL_ROOT` 与 `LOG_LEVEL_APP` 调整；生产环境不建议开启 `DEBUG`，避免日志量过大或异常上下文泄露敏感信息
+- 文件和控制台日志默认使用 UTF-8，可通过 `LOG_FILE_CHARSET` 与 `LOG_CONSOLE_CHARSET` 调整
+- 日志统一输出 JSON，包含时间、级别、Logger、线程、消息、`requestId`，以及请求方法、路径、HTTP 状态码、耗时和来源 IP（请求链路字段存在时）
+- 请求日志由统一过滤器记录，并通过 `X-Request-ID` 响应头返回请求 ID；客户端提供合法的 `X-Request-ID` 时会沿用，否则服务端生成随机 ID
+- 统一日志布局会遮蔽 `password`、验证码、Cookie、Authorization、CSRF Token 和常见 token 字段；生产环境仍应避免将敏感原文作为异常消息传入日志
+- 当前仍未完成结构化字段和完整敏感字段脱敏，生产部署前应结合日志采集系统继续加固
+
+日志相关环境变量示例：
+
+```powershell
+$env:LOG_FILE="E:\employee-management-data\logs\application.log"
+$env:LOG_RETENTION_NATURAL_DAYS="3"
+$env:LOG_CLEAN_HISTORY_ON_START="true"
+$env:LOG_MAX_FILE_SIZE="10MB"
+$env:LOG_TOTAL_SIZE_CAP="1GB"
+$env:LOG_LEVEL_ROOT="INFO"
+$env:LOG_LEVEL_APP="INFO"
+$env:LOG_FILE_CHARSET="UTF-8"
+$env:LOG_CONSOLE_CHARSET="UTF-8"
+```
+
+JSON 日志示例：
+
+```json
+{"timestamp":"2026-09-10T03:15:20.123Z","level":"INFO","logger":"com.ssm.config.RequestLoggingFilter","thread":"http-nio-8080-exec-1","message":"HTTP request completed","requestId":"8cc5d6c1-1a72-4fd8-b6f4-4d9dfb0f1c41","httpMethod":"POST","httpPath":"/api/auth/login","httpStatus":"200","durationMs":"42","clientIp":"127.0.0.1"}
+```
 
 ### 安全能力
 
@@ -256,8 +309,11 @@
 vue3
 ├── pom.xml
 ├── README.md
+├── HANDOFF.md
 ├── data
-│   └── files
+│   ├── files                   # 普通分发文件
+│   └── avatars                 # 运行时头像目录，不纳入 Git
+│       └── pending             # 待审批头像
 ├── src
 │   └── main
 │       ├── java
@@ -270,6 +326,7 @@ vue3
 │       │           ├── entity
 │       │           ├── mapper
 │       │           └── service
+│       │               └── AvatarStorageService.java
 │       └── resources
 │           ├── application.yml
 │           ├── db
@@ -286,6 +343,21 @@ vue3
 │               └── login.html
 └── target
 ```
+
+## 当前验证状态
+
+截至 2026-09-10，当前工作区改动已通过以下检查：
+
+```powershell
+mvn -o -q -DskipTests compile
+node --check src/main/resources/static/app/app.js
+npm run build -- --emptyOutDir=false
+git diff --check
+```
+
+上述结果表示 Java 编译、前端语法、生产构建和差异格式检查通过，不等同于完整的浏览器端到端测试。头像上传、审批、重启持久化和多用户权限隔离仍应按 [HANDOFF.md](HANDOFF.md) 的验收清单进行真实运行验证。
+
+当前已知的 P1 风险是头像审批时数据库更新与待审批文件移动不是同一个事务：接手开发时应先修复顺序和失败回滚，再进行最终验收。测试环境不意味着可以跳过后端校验、权限隔离或运行时数据备份。
 
 ## 数据库初始化
 
@@ -319,7 +391,19 @@ src/main/resources/application.yml
 | `DB_URL` | `jdbc:mysql://localhost:3306/employee_management...` | MySQL 连接地址 |
 | `DB_USERNAME` | `root` | MySQL 用户名 |
 | `DB_PASSWORD` | `123456` | MySQL 密码 |
-| `FILE_STORAGE_DIR` | `./data/files` | 分发文件存储目录 |
+| `FILE_STORAGE_DIR` | `${user.dir}/data/files` | 分发文件存储目录 |
+| `AVATAR_STORAGE_DIR` | `${user.dir}/data/avatars` | 头像独立存储目录；正式头像按“员工编号_avatar_时间.扩展名”命名，每个员工只保留一个正式头像，生产环境建议配置为固定的绝对路径 |
+| `LOG_FILE` | `${user.dir}/data/logs/application.log` | Spring Boot 运行日志文件；生产环境建议配置为固定的绝对路径 |
+| `LOG_RETENTION_NATURAL_DAYS` | `3` | 归档日志按文件名日期保留的自然日数 |
+| `LOG_RETENTION_CLEANUP_INTERVAL_MS` | `3600000` | 日志过期清理任务间隔（毫秒） |
+| `LOG_LOGBACK_MAX_HISTORY` | `31` | Logback 归档数量兜底上限；实际自然日清理由清理器执行 |
+| `LOG_CLEAN_HISTORY_ON_START` | `true` | 应用启动时是否清理超过保留期的日志；关闭后仍保留每小时自动清理 |
+| `LOG_MAX_FILE_SIZE` | `10MB` | 单个日志文件达到此大小后分片轮转 |
+| `LOG_TOTAL_SIZE_CAP` | `1GB` | 日志归档总容量上限 |
+| `LOG_LEVEL_ROOT` | `INFO` | 根日志级别；生产环境建议保持 `INFO` 或更高 |
+| `LOG_LEVEL_APP` | `INFO` | `com.ssm` 应用日志级别；生产环境建议保持 `INFO` 或更高 |
+| `LOG_FILE_CHARSET` | `UTF-8` | 日志文件字符集 |
+| `LOG_CONSOLE_CHARSET` | `UTF-8` | 控制台日志字符集 |
 | `FILE_ALLOWED_EXTENSIONS` | `pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,png,jpg,jpeg,zip` | 允许上传的文件扩展名白名单 |
 | `FILE_ALLOWED_CONTENT_TYPES` | 常见办公文档、文本、CSV、PNG/JPEG、ZIP MIME | 允许上传的 `Content-Type` 白名单 |
 | `ATTENDANCE_LATE_AFTER` | `09:00` | 考勤迟到判定时间 |
@@ -607,6 +691,13 @@ sudo journalctl -u employee -f
 
 ## 注意事项
 
+### 运行时数据与源码边界
+
+- `data/files` 存放普通分发文件，`data/avatars` 存放用户头像，二者不能混用。
+- `data/avatars/**` 被 `.gitignore` 忽略只是为了避免把用户图片提交到仓库，不代表可以删除；它是需要备份的运行时业务数据。
+- 默认目录基于 `${user.dir}`。IDE、命令行、Windows 服务和容器的工作目录可能不同，重启持久化验收和正式部署应配置固定绝对路径。
+- 不要提交 `.idea/vcs.xml`、真实头像、数据库密码、验证码密钥或其他环境机密。
+
 - 前端 Vue 3 和 Lucide Icons 已改为本地静态资源，部署环境不依赖外部 CDN。
 - 当前 Vue 模板仍使用运行时编译模式，CSP 中需要允许 `unsafe-eval`；如果改成前端构建产物，可以移除此项以获得更严格的安全策略。
 - 部署到生产环境时建议开启 HTTPS，并设置 `SESSION_COOKIE_SECURE=true`。
@@ -674,6 +765,27 @@ sudo journalctl -u employee -f
 - 对高风险签到写入操作审计或通知管理员复核
 
 ## 更新日志
+
+### 2026-09-10 更新
+
+**个人设置与资料审批：**
+
+- 个人设置中的个人资料维护和登录与会话改为入口卡片，通过弹窗修改或查看，登录记录支持分页
+- 普通员工和主管修改手机号、邮箱、头像时提交管理员审批，管理员修改自己的资料时直接生效
+- 手机号统一限制为国内格式 `^1[3-9]\d{9}$`，邮箱限制为基本邮箱格式且不超过 120 个字符；提交、审批和直接保存均执行后端校验
+- 通知中心单条操作只保留“查看”，点击后自动标记为已读
+
+**头像存储：**
+
+- 修复 CSP 阻止 `blob:` 地址导致选择头像后无法预览的问题，改为使用 `FileReader` 数据地址预览
+- 头像从普通文件目录分离到 `AVATAR_STORAGE_DIR`，默认位置为 `data/avatars`
+- 正式头像使用 `员工编号_avatar_yyyyMMddHHmmssSSS.jpg/png` 命名，待审批头像存放在 `pending` 子目录
+- 新头像生效后清理同一员工旧头像；头像文件不存在时前端回退为默认 EMS 标识
+
+**登录与日志：**
+
+- 新增当前用户登录记录接口，个人设置只能查看当前登录用户自己的记录
+- 明确区分数据库中的登录日志、操作审计日志和 Spring Boot 控制台运行日志
 
 ### 2026-06-22 更新
 
@@ -767,7 +879,7 @@ sudo journalctl -u employee -f
 | 1 | 数据备份 | 实现数据库定时自动备份（mysqldump + cron） | 高 |
 | 2 | HTTPS | 配置 SSL 证书，强制 HTTPS，设置 `SESSION_COOKIE_SECURE=true` | 高 |
 | 3 | 文件存储 | 将本地文件存储迁移至对象存储（OSS / MinIO） | 高 |
-| 4 | 日志 | 引入 SLF4J + Logback 结构化日志，配置日志轮转 | 高 |
+| 4 | 日志 | 已完成 JSON 文件落盘、请求链路字段、基础敏感字段脱敏、按天轮转和 3 个自然日保留；仍需接入集中采集与告警 | 高 |
 | 5 | 密码策略 | 实现密码过期（90 天）、密码复杂度校验、历史密码检查 | 中 |
 | 6 | 并发 | Session 存储迁移至 Redis，支持多实例部署 | 中 |
 | 7 | 监控 | 添加 Spring Boot Actuator 健康检查、内存 / CPU 监控 | 中 |
